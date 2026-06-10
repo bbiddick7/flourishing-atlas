@@ -5,6 +5,35 @@
 
 import { getUserFromToken, getAdminClient } from "./_lib/supabaseAdmin.js";
 
+// Tolerant JSON extraction. Models occasionally return *almost*-valid JSON
+// (trailing commas, markdown fences, preamble text, stray control chars, or a
+// response truncated mid-structure). A single strict JSON.parse() rejects all of
+// these. This strips the common glitches and retries before giving up, so a
+// minor formatting slip doesn't fail an otherwise-good survey. Returns the parsed
+// object, or null if it truly can't be salvaged.
+function extractJSON(text) {
+  if (!text) return null;
+  let cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1) return null;
+  cleaned = cleaned.slice(start, end + 1);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    try {
+      const repaired = cleaned
+        .replace(/,(\s*[}\]])/g, "$1")   // trailing commas before } or ]
+        .replace(/,\s*,/g, ",")          // doubled commas
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ""); // control chars
+      return JSON.parse(repaired);
+    } catch {
+      return null;
+    }
+  }
+}
+
 const DOMAINS = [
   { key: "happiness", label: "Happiness & Life Satisfaction", ideal: "People broadly report contentment with their lives; daily life affords moments of ease, not just survival.", indicators: "self-reported life satisfaction, access to green space and recreation, leisure time availability" },
   { key: "health", label: "Physical & Mental Health", ideal: "Healthspan tracks lifespan; care is accessible; mental health support exists without stigma.", indicators: "healthcare access / uninsured rate, mental health provider availability, life expectancy, healthspan-lifespan gap" },
@@ -98,7 +127,7 @@ Search the web for real, location-specific data. Return the JSON object as instr
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1500,
+        max_tokens: 4096,
         system: SYSTEM,
         messages: [{ role: "user", content: userMsg }],
         tools: [{ type: "web_search_20250305", name: "web_search" }],
@@ -116,18 +145,14 @@ Search the web for real, location-specific data. Return the JSON object as instr
     const text = (data.content || [])
       .filter((b) => b.type === "text")
       .map((b) => b.text)
-      .join("\n")
-      .replace(/```json|```/g, "")
-      .trim();
+      .join("\n");
 
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start === -1 || end === -1) {
+    const parsed = extractJSON(text);
+    if (!parsed) {
       await refund(admin, user.id);
       return res.status(502).json({ error: "Could not read a result. Your credit was refunded." });
     }
 
-    const parsed = JSON.parse(text.slice(start, end + 1));
     parsed._creditsRemaining = remaining; // let the UI update the balance
     return res.status(200).json(parsed);
   } catch (err) {
