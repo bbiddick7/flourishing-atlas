@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./lib/supabaseClient.js";
+import { TERMS, REFUND, LEGAL_LAST_UPDATED } from "./lib/legal.js";
 
 const DOMAINS = [
   { key: "happiness", label: "Happiness & Life Satisfaction", ideal: "People broadly report contentment with their lives; daily life affords moments of ease, not just survival." },
@@ -27,6 +28,8 @@ export default function FlourishingAtlas() {
   const [authEmail, setAuthEmail] = useState("");
   const [authSent, setAuthSent] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
+  const [agreed, setAgreed] = useState(false);       // must accept terms before sign-in
+  const [legalPage, setLegalPage] = useState(null);   // null | "terms" | "refund"
 
   const [credits, setCredits] = useState(null);
   const [buying, setBuying] = useState(false);
@@ -80,6 +83,10 @@ export default function FlourishingAtlas() {
   async function sendMagicLink() {
     const email = authEmail.trim();
     if (!email) return;
+    if (!agreed) {
+      setError("Please agree to the Terms of Service and Refund Policy first.");
+      return;
+    }
     setAuthBusy(true);
     setError("");
     try {
@@ -229,6 +236,21 @@ export default function FlourishingAtlas() {
         .footnote{margin-top:44px; padding-top:18px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); line-height:1.6;}
         .footnote strong{color:var(--ink);}
         .authcard{margin-top:26px; background:var(--paper-deep); border:1px solid var(--line); padding:22px;}
+        .agree{display:flex; align-items:flex-start; gap:9px; margin-top:14px; font-size:13px; color:var(--muted); cursor:pointer; line-height:1.5;}
+        .agree input{margin-top:3px; flex:0 0 auto; cursor:pointer;}
+        .inline-link{background:none; border:none; padding:0; color:var(--accent); font:inherit; text-decoration:underline; cursor:pointer;}
+        .inline-link:hover{color:var(--accent-soft);}
+        .site-footer{margin-top:56px; padding-top:20px; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center; font-family:'Spline Sans Mono',monospace; font-size:11.5px; color:var(--muted);}
+        .footer-links{display:flex; gap:16px;}
+        .legal-overlay{position:fixed; inset:0; background:rgba(28,35,33,0.55); display:flex; align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; z-index:50;}
+        .legal-modal{background:var(--paper); border:1px solid var(--ink); max-width:680px; width:100%; padding:36px 40px; position:relative; box-shadow:0 12px 48px rgba(0,0,0,0.25);}
+        .legal-close{position:absolute; top:14px; right:18px; background:none; border:none; font-size:28px; line-height:1; color:var(--muted); cursor:pointer;}
+        .legal-close:hover{color:var(--ink);}
+        .legal-title{font-family:'Fraunces',serif; font-size:28px; font-weight:500; margin:0 0 4px;}
+        .legal-updated{font-family:'Spline Sans Mono',monospace; font-size:11px; color:var(--muted); margin:0 0 20px;}
+        .legal-section{margin-bottom:18px;}
+        .legal-section h3{font-family:'Fraunces',serif; font-size:16px; font-weight:600; margin:0 0 6px;}
+        .legal-section p{font-size:14px; margin:0; color:var(--ink); line-height:1.6;}
         @media (prefers-reduced-motion:reduce){.pulse{animation:none;}}
       `}</style>
 
@@ -273,6 +295,15 @@ export default function FlourishingAtlas() {
                   </button>
                 </div>
                 <p className="disclaimer">No password. We email you a one-time link to sign in. Your email is used only to hold your survey credits.</p>
+                <label className="agree">
+                  <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+                  <span>
+                    I agree to the{" "}
+                    <button type="button" className="inline-link" onClick={() => setLegalPage("terms")}>Terms of Service</button>
+                    {" "}and{" "}
+                    <button type="button" className="inline-link" onClick={() => setLegalPage("refund")}>Refund Policy</button>.
+                  </span>
+                </label>
               </>
             )}
             {error && <p className="hint">{error}</p>}
@@ -375,7 +406,41 @@ export default function FlourishingAtlas() {
             </p>
           </div>
         )}
+
+        <footer className="site-footer">
+          <span>© {new Date().getFullYear()} North Bridge Solutions · Madison, Wisconsin</span>
+          <span className="footer-links">
+            <button type="button" className="inline-link" onClick={() => setLegalPage("terms")}>Terms of Service</button>
+            <button type="button" className="inline-link" onClick={() => setLegalPage("refund")}>Refund Policy</button>
+          </span>
+        </footer>
       </div>
+
+      {legalPage && (
+        <div className="legal-overlay" onClick={() => setLegalPage(null)}>
+          <div className="legal-modal" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="legal-close" onClick={() => setLegalPage(null)} aria-label="Close">×</button>
+            {(() => {
+              const doc = legalPage === "terms" ? TERMS : REFUND;
+              return (
+                <>
+                  <h2 className="legal-title">{doc.title}</h2>
+                  <p className="legal-updated">Last updated: {LEGAL_LAST_UPDATED}</p>
+                  {doc.sections.map((s, i) => (
+                    <div key={i} className="legal-section">
+                      <h3>{s.heading}</h3>
+                      <p>{s.body}</p>
+                    </div>
+                  ))}
+                  <p className="legal-updated" style={{ marginTop: 24 }}>
+                    This document is a starting draft and should be reviewed by a qualified attorney before publication.
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
