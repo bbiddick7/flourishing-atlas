@@ -432,9 +432,6 @@ export default function FlourishingAtlas() {
                       <p>{s.body}</p>
                     </div>
                   ))}
-                  <p className="legal-updated" style={{ marginTop: 24 }}>
-                    This document is a starting draft and should be reviewed by a qualified attorney before publication.
-                  </p>
                 </>
               );
             })()}
